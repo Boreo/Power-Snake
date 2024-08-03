@@ -5,9 +5,10 @@
         =Reset(Self);UpdateContext({locPlayAudio: false})
       Media: =beep
       Start: =locPlayAudio
-      Visible: =false
-      X: =40
-      Y: =40
+      Fill: =Color.Transparent
+      Height: =0
+      ShowControls: =false
+      Width: =2
 - tmrGame:
     Control: Timer
     Properties:
@@ -17,7 +18,6 @@
       Repeat: =!locIsGameOver
       Start: =locStartGame
       Visible: =false
-      X: =9
 - conScreenLayout:
     Control: GroupContainer
     Variant: verticalAutoLayoutContainer
