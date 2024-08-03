@@ -1,0 +1,63 @@
+// Change game screen size
+UpdateContext({locMaxX:15,locMaxY:10});
+UpdateContext({locAspectRatio:locMaxX/locMaxY});
+
+// Generate game board
+ClearCollect(
+    colX,
+    ForAll(
+        Sequence(locMaxX+2),
+        {X: Value - 2}
+    )
+);
+ClearCollect(
+    colY,
+    ForAll(
+        Sequence(locMaxY+2),
+        {Y: Value - 2}
+    )
+);
+Clear(colBoard);
+ForAll(
+    colX,
+    ForAll(
+        colY,
+        Collect(
+            colBoard,
+            {
+                X: X,
+                Y: Y,
+                Object: "",
+                Value: -1
+            }
+        )
+    )
+);
+
+ForAll(Filter(colBoard, X=-1 || X=locMaxX || Y=-1 || Y=locMaxY),Patch(colBoard,ThisRecord, {Object:"Boundry"}));
+ClearCollect(colBlankBoard,colBoard);
+// Default settings record
+UpdateContext({locDefaultSettings:{Hard: false, Wrap: false, Highscore: 0, Debug: false}});
+
+// Attempt to load settings from local storage or use default if not available
+IfError(
+    LoadData(colSettings, "Settings", false),
+    ClearCollect(colSettings, locDefaultSettings)
+);
+UpdateContext({locSettings: First(colSettings)});
+
+
+UpdateContext(
+    {
+        locBGColour: "#a1bd3b",
+        locMainColour: "#304105",
+        locMenu: "Main",
+        locMenuItem: lblPlay.Text,
+        locHard: locSettings.Hard,
+        locWrap: locSettings.Wrap,
+        locDebug: locSettings.Debug,
+        locStartGame: false,
+        locMultiplier: 1,
+        locHighScore: locSettings.Highscore
+    }
+);

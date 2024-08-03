@@ -1,0 +1,989 @@
+- tmrGame:
+    Control: Timer
+    Properties:
+      OnTimerEnd: "=If(\n    locMenu = \"Game\",\n    // Switch direction back if opposite\n    If(\n        locMoveDirection = \"N\" && locMoveDirectionPrevious = \"S\" || locMoveDirection = \"S\" && locMoveDirectionPrevious = \"N\" || locMoveDirection = \"W\" && locMoveDirectionPrevious = \"E\" || locMoveDirection = \"E\" && locMoveDirectionPrevious = \"W\",\n        UpdateContext({locMoveDirection: locMoveDirectionPrevious})\n    );\n    // Calculate Head Move\n    Patch(\n        colBoard,\n        locHeadObject,\n        {Object: \"\"}\n    );\n    Switch(\n        locMoveDirection,\n        \"N\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y - 1}\n                )\n            }\n        ),\n        \"S\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y + 1}\n                )\n            }\n        ),\n        \"E\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        ),\n        \"W\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X - 1}\n                )\n            }\n        ),\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        )\n    );\n    // Tail Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && X = locHeadObject.X && Y = locHeadObject.Y\n            )\n        ),\n        UpdateContext(\n            {\n                locMenu: \"Gameover\",\n                locMenuItem: lblGOExit.Text,\n                locIsGameOver: true\n            }\n        )\n    );\n    // Boundry Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                X = locHeadObject.X && Y = locHeadObject.Y && Object = \"Boundry\"\n            )\n        ),\n        If(\n            locWrap,\n            UpdateContext(\n                {\n                    locHeadObject: Patch(\n                        locHeadObject,\n                        {\n                            X: If(\n                                locHeadObject.X < 0,\n                                locMaxX - 1,\n                                If(\n                                    locHeadObject.X >= locMaxX,\n                                    0,\n                                    locHeadObject.X\n                                )\n                            ),\n                            Y: If(\n                                locHeadObject.Y < 0,\n                                locMaxY - 1,\n                                If(\n                                    locHeadObject.Y >= locMaxY,\n                                    0,\n                                    locHeadObject.Y\n                                )\n                            )\n                        }\n                    )\n                }\n            ),\n            UpdateContext(\n                {\n                    locMenu: \"Gameover\",\n                    locMenuItem: lblGOExit.Text,\n                    locIsGameOver: true\n                }\n            )\n        )\n    );\n    // Make the Head Move\n    UpdateContext(\n        {\n            locHeadObject: Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    X = locHeadObject.X && Y = locHeadObject.Y\n                ),\n                {Object: \"Head\"}\n            )\n        }\n    );\n    Concurrent(\n        // Dot Collision Check\n        If(\n            locHeadObject.X = locDotObject.X && locHeadObject.Y = locDotObject.Y,\n            UpdateContext({locDotCollision: true});\n            UpdateContext({locDotCount: locDotCount + 1});\n        ),\n        // Special Collision Check\n        If(\n            locHeadObject.X = locSpecialObject.X && locHeadObject.Y = locSpecialObject.Y,\n            UpdateContext(\n                {\n                    locSpecialCollision: true,\n                    locSpecialSpawnTick: 0\n                }\n            );\n        )\n    );\n    // Scoring Actions\n    If(\n        locSpecialCollision || locDotCollision,\n        UpdateContext(\n            {\n                locScore: RoundDown(\n                    locScore + If(\n                        locSpecialCollision,\n                        50 * locMultiplier,\n                        10 * locMultiplier\n                    ),\n                    0\n                ),\n                locSpeed: Max(\n                    locMaxSpeed,\n                    locSpeed - (locSpeed * locSpeedDivisor)\n                )\n            }\n        );\n        If(\n            // Remove and Spawn new Dot\n            locDotCollision,\n            Patch(\n                LookUp(\n                    colBoard,\n                    Object = \"Dot\"\n                ),\n                {Object: \"\"}\n            );\n            With(\n                {\n                    randomFreeSpace: Last(\n                        FirstN(\n                            Filter(\n                                colBoard,\n                                Object = \"\"\n                            ),\n                            RandBetween(\n                                1,\n                                CountRows(\n                                    Filter(\n                                        colBoard,\n                                        Object = \"\"\n                                    )\n                                )\n                            )\n                        )\n                    )\n                },\n                UpdateContext(\n                    {\n                        locDotObject: Patch(\n                            colBoard,\n                            randomFreeSpace,\n                            {Object: \"Dot\"}\n                        )\n                    }\n                )\n            ),\n            // Remove Special\n            Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                ),\n                {Object: \"\"}\n            );\n            UpdateContext({locSpecialObject: Blank()});\n        );\n    );\n    // Move Tail, will create additional tail segment which will be removed if no collision.\n    // Get new tail pos\n    ClearCollect(\n        colTailUpdates,\n        AddColumns(\n            Filter(\n                colBoard,\n                Object = \"Tail\" && Value >= 0\n            ),\n            NewValue,\n            Value + 1\n        )\n    );\n    // Make Tails move\n    ForAll(\n        Sort(\n            colTailUpdates,\n            Value,\n            SortOrder.Descending\n        ) As Update,\n        Patch(\n            colBoard,\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && Value = Update.Value\n            ),\n            {Value: Update.NewValue}\n        )\n    );\n    // Move first Tail to Head\n    Patch(\n        colBoard,\n        LookUp(\n            colBoard,\n            X = locPrevHeadObject.X && Y = locPrevHeadObject.Y\n        ),\n        {\n            Object: \"Tail\",\n            Value: 0\n        }\n    );\n    If(\n        Not(locSpecialCollision || locDotCollision),\n        // No Collision; clear the additional tail segment\n        Patch(\n            colBoard,\n            First(\n                Sort(\n                    Filter(\n                        colBoard,\n                        Object = \"Tail\"\n                    ),\n                    Value,\n                    SortOrder.Descending\n                )\n            ),\n            {\n                Object: \"\",\n                Value: -1\n            }\n        );\n    );\n    // Reset Collision\n    UpdateContext(\n        {\n            locSpecialCollision: false,\n            locDotCollision: false\n        }\n    );\n    // Spawn Special\n    If(\n        locDotCount >= 5,\n        UpdateContext(\n            {\n                locSpecialSpawn: true,\n                locDotCount: 0\n            }\n        )\n    );\n    If(\n        locSpecialSpawn && Mod(\n            locGameTick,\n            25\n        ) = 0,\n        With(\n            {\n                randomFreeSpace: Last(\n                    FirstN(\n                        Filter(\n                            colBoard,\n                            Object = \"\"\n                        ),\n                        RandBetween(\n                            1,\n                            CountRows(\n                                Filter(\n                                    colBoard,\n                                    Object = \"\"\n                                )\n                            )\n                        )\n                    )\n                )\n            },\n            UpdateContext(\n                {\n                    locSpecialSpawn: false,\n                    locSpecialSpawnTick: locGameTick,\n                    locSpecialObject: Patch(\n                        colBoard,\n                        LookUp(\n                            colBoard,\n                            X = randomFreeSpace.X && Y = randomFreeSpace.Y\n                        ),\n                        {Object: \"Special\"}\n                    )\n                }\n            )\n        )\n    );\n    // Remove the special Object after 30 game ticks\n    If(\n        locGameTick = locSpecialSpawnTick + locSpecialDespawnTicks && locSpecialSpawnTick > 0,\n        With(\n            {\n                oldSpecialObject: LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                )\n            },\n            Patch(\n                colBoard,\n                oldSpecialObject,\n                {\n                    Object: \"\",\n                    Value: -1\n                }\n            )\n        );\n        UpdateContext({locSpecialSpawnTick: 0});\n    );\n    // Update variables\n    UpdateContext(\n        {\n            locGameTick: locGameTick + 1,\n            locMoveDirectionPrevious: locMoveDirection,\n            locPrevHeadObject: locHeadObject\n        }\n    ),\n    If(\n        locMenu = \"Gameover\",\n        If(\n            locScore > locHighScore,\n            UpdateContext({locHighScore: locScore});\n            UpdateContext(\n                {\n                    locSettings: Patch(\n                        colSettings,\n                        locSettings,\n                        {Highscore: locHighScore}\n                    )\n                }\n            );\n            IfError(\n                ClearData(),\n                \"\"\n            );\n            IfError(\n                SaveData(\n                    colSettings,\n                    \"Settings\"\n                ),\n                locSettings\n            )\n        )\n    );\n    \n);\n"
+      AutoPause: =false
+      Duration: =locSpeed
+      Repeat: =!locIsGameOver
+      Start: =locStartGame
+      Visible: =false
+      X: =9
+- conScreenLayout:
+    Control: GroupContainer
+    Variant: verticalAutoLayoutContainer
+    Properties:
+      DropShadow: =DropShadow.None
+      Height: =Parent.Height
+      LayoutAlignItems: =LayoutAlignItems.Center
+      LayoutDirection: =LayoutDirection.Vertical
+      LayoutJustifyContent: =LayoutJustifyContent.Center
+      LayoutMode: =LayoutMode.Auto
+      Width: =Parent.Width
+    Children:
+    - conScore:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          BorderThickness: =2
+          DropShadow: =DropShadow.None
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =40
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutGap: =10
+          LayoutMode: =LayoutMode.Auto
+          PaddingLeft: =24
+          PaddingRight: =24
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Width: =conGameWindow.Width
+          X: =conGameWindow.X
+          Y: =conGameWindow.Y-Self.Height*1.2
+        Children:
+        - lblScore:
+            Control: Label
+            Properties:
+              Text: |-
+                ="SCORE: " & locScore
+              FontWeight: =FontWeight.Bold
+              Size: =If('Game Screen'.Size >1,16,13)
+        - lblHighscore:
+            Control: Label
+            Properties:
+              Text: |-
+                ="HISCORE: " & locHighScore
+              Align: =Align.Right
+              FontWeight: =FontWeight.Bold
+              Size: =If('Game Screen'.Size >1,16,13)
+              Width: =Parent.Width-lblScore.Width-Parent.PaddingLeft-Parent.PaddingRight-Parent.LayoutGap
+    - conGameWindow:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          BorderColor: =ColorValue(locMainColour)
+          BorderStyle: =BorderStyle.Dashed
+          BorderThickness: =If(locWrap,0,6)
+          DropShadow: =DropShadow.None
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: |-
+            =If(
+                'Game Screen'.Width > 'Game Screen'.Height,
+                'Game Screen'.Height - conDPAD.Height - conScore.Height - If(
+                    locDebug,
+                    conDebug.Height,
+                    0
+                ),
+                IfError('Game Screen'.Width / locAspectRatio,'Game Screen'.Width / 2)
+            )
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Game"
+          Width: |
+            =If(
+                'Game Screen'.Width > 'Game Screen'.Height,
+                ('Game Screen'.Height - conDPAD.Height - conScore.Height - If(
+                    locDebug,
+                    conDebug.Height,
+                    0
+                )) * locAspectRatio,
+                'Game Screen'.Width
+            )
+        Children:
+        - galX:
+            Control: Gallery
+            Variant: galleryHorizontal
+            Properties:
+              Items: =ForAll(Sequence(locMaxX),Value-1)
+              AlignInContainer: =AlignInContainer.Center
+              DelayItemLoading: =true
+              FillPortions: =0
+              Height: =Parent.Height
+              LoadingSpinner: =LoadingSpinner.Data
+              ShowScrollbar: =false
+              TemplatePadding: =0
+              TemplateSize: =IfError(Self.Width/locMaxX,Self.Width)
+              Width: =Parent.Width
+            Children:
+            - galY:
+                Control: Gallery
+                Variant: galleryVertical
+                Properties:
+                  Items: |+
+                    =SortByColumns(Filter(colBoard, X = ThisItem.Value && Y >= 0 && Y <= locMaxY), "Y", SortOrder.Ascending)
+                  DelayItemLoading: =true
+                  Height: =Parent.Height
+                  Layout: =Layout.Vertical
+                  LoadingSpinner: =LoadingSpinner.Data
+                  ShowScrollbar: =false
+                  TemplatePadding: =0
+                  TemplateSize: =Parent.TemplateWidth
+                  Width: =Parent.TemplateWidth
+                Children:
+                - conPixel:
+                    Control: GroupContainer
+                    Variant: horizontalAutoLayoutContainer
+                    Properties:
+                      DropShadow: =DropShadow.None
+                      Height: =Parent.TemplateHeight
+                      LayoutAlignItems: =LayoutAlignItems.Center
+                      LayoutJustifyContent: =LayoutJustifyContent.Center
+                      LayoutMode: =LayoutMode.Auto
+                      RadiusBottomLeft: =0
+                      RadiusBottomRight: =0
+                      RadiusTopLeft: =0
+                      RadiusTopRight: =0
+                      Width: =Parent.TemplateWidth
+                    Children:
+                    - shpHead:
+                        Control: Rectangle
+                        Properties:
+                          OnSelect: =
+                          Height: =Parent.Height
+                          Visible: =ThisItem.Object = "Head"
+                          Width: =Parent.Height
+                    - shpTail:
+                        Control: Rectangle
+                        Properties:
+                          OnSelect: =
+                          Height: =Parent.Height/1.1
+                          Visible: =ThisItem.Object = "Tail"
+                          Width: =Self.Height
+                    - shpDot:
+                        Control: Circle
+                        Properties:
+                          Height: =Self.Width
+                          Visible: =ThisItem.Object = "Dot"
+                          Width: =Parent.Width/1.5
+                    - shpSpecial:
+                        Control: Star
+                        Properties:
+                          Height: =Self.Width
+                          Visible: =ThisItem.Object = "Special"
+                          Width: =Parent.Width/2
+    - conGameOverMenu:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =conGameWindow.Height
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutGap: =20
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Gameover"
+          Width: =conGameWindow.Width
+        Children:
+        - lblGameOver:
+            Control: Label
+            Properties:
+              Text: ="GAME OVER"
+              Align: =Align.Center
+              AutoHeight: =true
+              BorderColor: =ColorValue(locMainColour)
+              Color: =ColorValue(locMainColour)
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Bold
+              Height: =lblGOExit.Height
+              Size: =30
+              VerticalAlign: =VerticalAlign.Bottom
+              Width: =Parent.Width
+        - lblGameOverScore:
+            Control: Label
+            Properties:
+              Text: |-
+                ="SCORE: " & locScore
+              Align: =Align.Center
+              AutoHeight: =true
+              BorderColor: =ColorValue(locMainColour)
+              Color: =ColorValue(locMainColour)
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Bold
+              Height: =lblGOExit.Height
+              Size: =15
+              Width: =Parent.Width
+        - lblNewHighscore:
+            Control: Label
+            Properties:
+              Text: =If(locScore = locHighScore,"NEW HISCORE!")
+              Align: =Align.Center
+              AutoHeight: =true
+              BorderColor: =ColorValue(locMainColour)
+              Color: =ColorValue(locMainColour)
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Bold
+              Height: =lblGOExit.Height
+              PaddingBottom: =0
+              PaddingLeft: =0
+              PaddingRight: =0
+              PaddingTop: =0
+              Size: =15
+              VerticalAlign: =VerticalAlign.Top
+              Width: =Parent.Width
+        - lblGOExit:
+            Control: Label
+            Properties:
+              Text: ="EXIT"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+    - conPauseMenu:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =conGameWindow.Height
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutGap: =20
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Pause"
+          Width: =conGameWindow.Width
+        Children:
+        - lblPause:
+            Control: Label
+            Properties:
+              Text: ="GAME PAUSED"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              Color: =ColorValue(locMainColour)
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Bold
+              Height: =lblResume.Height
+              Size: =30
+              Width: =Parent.Width
+        - lblResume:
+            Control: Label
+            Properties:
+              Text: ="RESUME"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+        - lblPauseExit:
+            Control: Label
+            Properties:
+              Text: ="EXIT"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+    - conMainMenu:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =conGameWindow.Height
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutGap: =20
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Main"
+          Width: =conGameWindow.Width
+        Children:
+        - lblAppName:
+            Control: Label
+            Properties:
+              Text: "=\"\U0001F40D POWER SNAKE \U0001F40D\""
+              Align: =Align.Center
+              FontWeight: =FontWeight.Bold
+              Height: =If('Game Screen'.Size>1,lblPlay.Height*2,lblPlay.Height)
+              Size: =If('Game Screen'.Size>2,30,20)
+              Width: =Parent.Width
+        - lblPlay:
+            Control: Label
+            Properties:
+              Text: ="PLAY"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =If('Game Screen'.Size >2,Parent.Height/8,Parent.Height/6)
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =Parent.Width/2
+        - lblSettings:
+            Control: Label
+            Properties:
+              Text: ="SETTINGS"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+        - lblCredits:
+            Control: Label
+            Properties:
+              Text: ="CREDITS"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+    - conSettingsMenu:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =conGameWindow.Height
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutGap: =20
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Settings"
+          Width: =conGameWindow.Width
+        Children:
+        - lblDifficulty:
+            Control: Label
+            Properties:
+              Text: =Upper(If(locHard,"Turn Hard Mode Off","Turn Hard Mode On"))
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+        - lblWrap:
+            Control: Label
+            Properties:
+              Text: =Upper(If(locWrap,"Turn Wrap Off","Turn Wrap On"))
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+        - lblDebug:
+            Control: Label
+            Properties:
+              Text: ="DEBUG"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+        - lblSettingsBack:
+            Control: Label
+            Properties:
+              Text: ="BACK"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+    - conCredits:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          Fill: =ColorValue(locBGColour)
+          FillPortions: =0
+          Height: =conGameWindow.Height
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutGap: =20
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          RadiusBottomLeft: =0
+          RadiusBottomRight: =0
+          RadiusTopLeft: =0
+          RadiusTopRight: =0
+          Visible: =locMenu = "Credits"
+          Width: =conGameWindow.Width
+        Children:
+        - lblApp:
+            Control: Label
+            Properties:
+              Text: "=Upper(\"\U0001F40D Power Snake V1.1 \U0001F40D\")"
+              Align: =Align.Center
+              AutoHeight: =true
+              Height: =lblCreditsBack.Height
+              Size: =If('Game Screen'.Size >1,13,9)
+              Width: =Parent.Width
+        - lblAuthor:
+            Control: Label
+            Properties:
+              Text: |-
+                =Upper("Created by:
+                Jarrad Thornton
+                github: Boreo")
+              Align: =Align.Center
+              AutoHeight: =true
+              Height: =lblCreditsBack.Height
+              Size: =If('Game Screen'.Size >1,13,9)
+              Width: =Parent.Width
+        - lblLicense:
+            Control: Label
+            Properties:
+              Text: |-
+                =Upper("Feel free to use any part of this App, just credit me.
+                Thanks.")
+              Align: =Align.Center
+              AutoHeight: =true
+              Height: =lblCreditsBack.Height
+              Size: =If('Game Screen'.Size >1,13,9)
+              Width: =Parent.Width
+        - lblCreditsBack:
+            Control: Label
+            Properties:
+              Text: ="BACK"
+              Align: =Align.Center
+              BorderColor: =ColorValue(locMainColour)
+              BorderThickness: =2
+              Color: =If(locMenuItem = Self.Text,ColorValue(locBGColour),ColorValue(locMainColour))
+              Fill: =If(locMenuItem = Self.Text,ColorValue(locMainColour),RGBA(0, 0, 0, 0))
+              Font: =Font.'Courier New'
+              FontWeight: =FontWeight.Semibold
+              Height: =lblPlay.Height
+              Size: =If('Game Screen'.Size>2,14,10)
+              Width: =lblPlay.Width
+    - conDPAD:
+        Control: GroupContainer
+        Variant: verticalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.Center
+          DropShadow: =DropShadow.None
+          Fill: =RGBA(102,111,121,255)
+          FillPortions: =0
+          Height: =icoUp.Height*3+32
+          LayoutAlignItems: =LayoutAlignItems.Center
+          LayoutDirection: =LayoutDirection.Vertical
+          LayoutJustifyContent: =LayoutJustifyContent.Center
+          LayoutMode: =LayoutMode.Auto
+          PaddingBottom: =16
+          PaddingLeft: =8
+          PaddingRight: =8
+          PaddingTop: =16
+          Width: =If('Game Screen'.Width > 'Game Screen'.Height,conGameWindow.Width/2,conGameWindow.Width)
+        Children:
+        - icoUp:
+            Control: Classic/Icon
+            Variant: ChevronUp
+            Properties:
+              OnSelect: |+
+                =If(
+                    locMenu = "Game",
+                    UpdateContext({locMoveDirection: "N"}),
+                    Switch(
+                        locMenuItem,
+                        lblCredits.Text,
+                        UpdateContext({locMenuItem: lblSettings.Text}),
+                        lblSettings.Text,
+                        UpdateContext({locMenuItem: lblPlay.Text}),
+                        lblSettingsBack.Text,
+                        UpdateContext({locMenuItem: lblDebug.Text}),
+                        lblDebug.Text,
+                        UpdateContext({locMenuItem: lblWrap.Text}),
+                        lblWrap.Text,
+                        UpdateContext({locMenuItem: lblDifficulty.Text}),
+                        lblPauseExit.Text,
+                        UpdateContext({locMenuItem: lblResume.Text})
+                    )
+                );
+              BorderColor: =Self.Color
+              BorderThickness: =1
+              Color: =RGBA(2,105,82,255)
+              Fill: =RGBA(210,211,204,255)
+              Height: =80
+              Icon: =Icon.ChevronUp
+              PaddingBottom: =Self.Width/4
+              PaddingLeft: =Self.Width/4
+              PaddingRight: =Self.Width/4
+              PaddingTop: =Self.Width/4
+              Width: =Self.Height
+        - conMiddleRow:
+            Control: GroupContainer
+            Variant: verticalAutoLayoutContainer
+            Properties:
+              DropShadow: =DropShadow.None
+              Height: =icoLeft.Height
+              LayoutAlignItems: =LayoutAlignItems.Center
+              LayoutGap: =icoUp.Width/3
+              LayoutJustifyContent: =LayoutJustifyContent.Center
+              LayoutMinHeight: =80
+              LayoutMode: =LayoutMode.Auto
+              Width: =Parent.Width
+            Children:
+            - icoLeft:
+                Control: Classic/Icon
+                Variant: ChevronUp
+                Properties:
+                  OnSelect: =UpdateContext({locMoveDirection:"W"})
+                  BorderColor: =icoUp.BorderColor
+                  BorderThickness: =1
+                  Color: =icoUp.Color
+                  Fill: =icoUp.Fill
+                  Height: =icoUp.Height
+                  Icon: =Icon.ChevronLeft
+                  PaddingBottom: =Self.Width/4
+                  PaddingLeft: =Self.Width/4
+                  PaddingRight: =Self.Width/4
+                  PaddingTop: =Self.Width/4
+                  Width: =icoUp.Width
+            - icoAction:
+                Control: Classic/Icon
+                Variant: ChevronUp
+                Properties:
+                  OnSelect: |-
+                    =Switch(
+                        locMenu,
+                        // MAIN SCREEN
+                        "Main",
+                        Switch(
+                            locMenuItem,
+                            // PLAY BUTTON
+                            lblPlay.Text,
+                            //** RESET GAME *//
+                            ClearCollect(colBoard,colBlankBoard);
+                            UpdateContext({locHeadObject:Patch(colBoard,LookUp(colBoard,X = RoundDown(locMaxX/2,0) && Y = RoundDown(locMaxY/2,0)),{Object: "Head"})});
+                            Patch(colBoard,LookUp(colBoard,X = locHeadObject.X-1 && Y = locHeadObject.Y),{Object: "Tail", Value: 0});
+                            Patch(colBoard,LookUp(colBoard,X = locHeadObject.X-2 && Y = locHeadObject.Y),{Object: "Tail", Value: 1});
+                            Patch(colBoard,LookUp(colBoard,X = locHeadObject.X-3 && Y = locHeadObject.Y),{Object: "Tail", Value: 2});
+                            Patch(colBoard,LookUp(colBoard,X = locHeadObject.X-4 && Y = locHeadObject.Y),{Object: "Tail", Value: 3});
+                            With(
+                                {
+                                    randomFreeSpace: Last(
+                                        FirstN(
+                                            Filter(colBoard,Object = ""),
+                                            RandBetween(
+                                                1,
+                                                CountRows(Filter(colBoard,Object = ""))
+                                            )
+                                        )
+                                    )
+                                },
+                                UpdateContext({locDotObject:Patch(colBoard,randomFreeSpace,{Object: "Dot"})});
+                            );
+                            UpdateContext(
+                                {
+                                    locSpecialObject: LookUp(
+                                        colBoard,
+                                        Object = "Special"
+                                    ),
+                                    locPrevHeadObject: LookUp(
+                                        colBoard,
+                                        Object = "Head"
+                                    ),
+                                    locScore: 0,
+                                    locMoveDirection:"E",
+                                    locMoveDirectionPrevious:"E",
+                                    locGameTick: 0,
+                                    locSpeed:If(locHard,800,1000),
+                                    locDotCollision:false,
+                                    locSpecialCollision:false,
+                                    locSpecialSpawn:false,
+                                    locSpecialSpawnTick:0,
+                                    locDotCount:0,
+                                    locMenu: "Game",
+                                    locMenuItem: "Play",
+                                    locStartGame: true,
+                                    locIsGameOver: false,
+                                    locMultiplier: 1+If(locHard,2)-If(locWrap,0.5),
+                                    locSpeedDivisor: If(locHard,0.12,0.06),
+                                    locMaxSpeed: If(locHard,100,200),
+                                    locSpecialDespawnTicks: If(locHard,locMaxY+locMaxX,(locMaxY+locMaxX)*2)
+                                }
+                            );
+                            UpdateContext(
+                                {
+                                    locMenu: "Game",
+                                    locStartGame: true
+                                }
+                            ),
+                            // SETTINGS BUTTON
+                            lblSettings.Text,
+                            UpdateContext({locMenu: "Settings", locMenuItem: lblDifficulty.Text}),
+                            // CREDITS BUTTON
+                            UpdateContext({locMenu: "Credits", locMenuItem: lblCreditsBack.Text})
+                        ),
+                        "Settings",
+                        Switch(
+                            locMenuItem,
+                            lblDifficulty.Text,
+                            // HARD BUTTON
+                            UpdateContext({locHard: !locHard});
+                            UpdateContext({locMenuItem: lblDifficulty.Text,locSettings:Patch(colSettings,locSettings,{Hard:locHard})});
+                            IfError(ClearData(),"");
+                            IfError(SaveData(colSettings,"Settings"),locSettings),
+                            // WRAP BUTTON
+                            lblWrap.Text,
+                            UpdateContext({locWrap: !locWrap});
+                            UpdateContext({locMenuItem: lblWrap.Text,locSettings:Patch(colSettings,locSettings,{Wrap:locWrap})});
+                            IfError(ClearData(),"");
+                            IfError(SaveData(colSettings,"Settings"),locSettings),
+                            // DEBUG BUTTON
+                            lblDebug.Text,
+                            UpdateContext({locDebug: !locDebug});
+                            UpdateContext({locSettings:Patch(colSettings,locSettings,{Debug:locDebug})});
+                            IfError(ClearData(),"");
+                            IfError(SaveData(colSettings,"Settings"),locSettings),
+                            // BACK BUTTON
+                            lblSettingsBack.Text,
+                            UpdateContext(
+                                {
+                                    locMenu: "Main",
+                                    locMenuItem: lblSettings.Text
+                                }
+                            )
+                        ),
+                        // CREDITS SCREEN
+                        "Credits",
+                        UpdateContext(
+                            {
+                                locMenu: "Main",
+                                locMenuItem: lblCredits.Text
+                            }
+                        ),
+                        // GAME SCREEN
+                        "Game",
+                        UpdateContext(
+                            {
+                                locMenu: "Pause",
+                                locMenuItem: lblResume.Text
+                            }
+                        ),
+                        // PAUSE SCREEN
+                        "Pause",
+                        Switch(
+                            locMenuItem,
+                            // RESUME BUTTON
+                            lblResume.Text,
+                            UpdateContext({locMenu: "Game"}),
+                            // EXIT BUTTON
+                            lblPauseExit.Text,
+                            UpdateContext(
+                                {
+                                    locMenu: "Main",
+                                    locMenuItem: lblPlay.Text,
+                                    locStartGame: false
+                                }
+                            )
+                        ),
+                        // DEFAULT/GAMEOVER
+                        UpdateContext(
+                            {
+                                locMenu: "Main",
+                                locMenuItem: lblPlay.Text,
+                                locStartGame: false
+                            }
+                        )
+                    )
+                  BorderColor: =icoUp.BorderColor
+                  BorderThickness: =1
+                  Color: =icoUp.Color
+                  Fill: =icoUp.Fill
+                  Height: =icoUp.Height/1.3
+                  Icon: =Icon.CollapseView
+                  PaddingBottom: =Self.Width/4
+                  PaddingLeft: =Self.Width/4
+                  PaddingRight: =Self.Width/4
+                  PaddingTop: =Self.Width/4
+                  Width: =Self.Height
+            - icoRight:
+                Control: Classic/Icon
+                Variant: ChevronUp
+                Properties:
+                  OnSelect: =UpdateContext({locMoveDirection:"E"})
+                  BorderColor: =icoUp.BorderColor
+                  BorderThickness: =1
+                  Color: =icoUp.Color
+                  Fill: =icoUp.Fill
+                  Height: =icoUp.Height
+                  Icon: =Icon.ChevronRight
+                  PaddingBottom: =Self.Width/4
+                  PaddingLeft: =Self.Width/4
+                  PaddingRight: =Self.Width/4
+                  PaddingTop: =Self.Width/4
+                  Width: =icoUp.Width
+        - icoDown:
+            Control: Classic/Icon
+            Variant: ChevronUp
+            Properties:
+              OnSelect: |+
+                =If(
+                    locMenu = "Game",
+                    UpdateContext({locMoveDirection: "S"}),
+                    Switch(
+                        locMenuItem,
+                        lblPlay.Text,
+                        UpdateContext({locMenuItem: lblSettings.Text}),
+                        lblSettings.Text,
+                        UpdateContext({locMenuItem: lblCredits.Text}),
+                        lblDifficulty.Text,
+                        UpdateContext({locMenuItem: lblWrap.Text}),
+                        lblWrap.Text,
+                        UpdateContext({locMenuItem: lblDebug.Text}),
+                        lblDebug.Text,
+                        UpdateContext({locMenuItem: lblSettingsBack.Text}),
+                        lblResume.Text,
+                        UpdateContext({locMenuItem: lblPauseExit.Text})
+                    )
+                );
+              BorderColor: =icoUp.BorderColor
+              BorderThickness: =1
+              Color: =icoUp.Color
+              Fill: =icoUp.Fill
+              Height: =icoUp.Height
+              Icon: =Icon.ChevronDown
+              PaddingBottom: =Self.Width/4
+              PaddingLeft: =Self.Width/4
+              PaddingRight: =Self.Width/4
+              PaddingTop: =Self.Width/4
+              Width: =icoUp.Width
+    - conDebug:
+        Control: GroupContainer
+        Variant: horizontalAutoLayoutContainer
+        Properties:
+          AlignInContainer: =AlignInContainer.SetByContainer
+          DropShadow: =DropShadow.None
+          FillPortions: =0
+          Height: =Parent.Height/15
+          LayoutMode: =LayoutMode.Auto
+          LayoutOverflowY: =LayoutOverflow.Scroll
+          LayoutWrap: =true
+          Visible: =locDebug
+          Width: =Parent.Width
+        Children:
+        - lblDebugDirection:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Direction: 
+                " & locMoveDirection
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =85
+        - lblDebugGameTick:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Game Tick: 
+                " & locGameTick
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =95
+        - lblDebugSpecialTick:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Special Tick: 
+                " & locSpecialSpawnTick
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =100
+        - lblDebugDotIter:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Dot Count: 
+                " & locDotCount
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =95
+        - lblDebugIsGameOver:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Game Over: 
+                " & locIsGameOver
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =100
+        - lblDebugSpeed:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Speed: 
+                " & locSpeed
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =65
+        - lblDebugSpecialSpawn:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Spawn Special: 
+                " & locSpecialSpawn
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =125
+        - lblDebugHeadPOS:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Head Position: 
+                X:" & locHeadObject.X & ", Y:" & locHeadObject.Y
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =119
+        - lblDebugDotPOS:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Dot Position: 
+                X:" & locDotObject.X & ", Y:" & locDotObject.Y
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =120
+        - lblDebugSpecialPOS:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Special Position: 
+                X:" & locSpecialObject.X & ", Y:" & locSpecialObject.Y
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =140
+        - lblDebugTailLength:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Tail Length: 
+                " & CountRows(Filter(colBoard,Object="Tail"))
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: |+
+                =110
+        - lblDebugWrap:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Wrap: 
+                " & locWrap
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =60
+        - lblDebugHardMode:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Hard Mode: 
+                " & locHard
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =100
+        - lblDebugScoreMulti:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Score Multiplier: 
+                " & locMultiplier
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+        - lblDebugSpeedDivisor:
+            Control: Label
+            Properties:
+              Text: |-
+                ="Speed Divisor: 
+                " & locSpeedDivisor
+              Font: =Font.'Open Sans'
+              Height: =50
+              Size: =12
+              Width: =130
+- shpOutline:
+    Control: Rectangle
+    Properties:
+      Fill: =RGBA(102,111,121,255)
+      Height: =conGameWindow.Height+conScore.Height+32
+      Width: =conGameWindow.Width+32
+      X: =conScore.X-16
+      Y: =conScore.Y-16
