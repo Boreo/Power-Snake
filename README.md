@@ -7,8 +7,6 @@
 Classic snake game inspired by the old Nokia games, made in Powerapps. 🐍
 <details>
 <summary>View Demo Video</summary>
-    
-https://github.com/user-attachments/assets/c3be4004-e720-435c-8ad6-9f6b8cdfa6fb
 </details>
 
 ## Features
