@@ -1,7 +1,17 @@
+- audBeep:
+    Control: Audio
+    Properties:
+      OnEnd: |-
+        =Reset(Self);UpdateContext({locPlayAudio: false})
+      Media: =beep
+      Start: =locPlayAudio
+      Visible: =false
+      X: =40
+      Y: =40
 - tmrGame:
     Control: Timer
     Properties:
-      OnTimerEnd: "=If(\n    locMenu = \"Game\",\n    // Switch direction back if opposite\n    If(\n        locMoveDirection = \"N\" && locMoveDirectionPrevious = \"S\" || locMoveDirection = \"S\" && locMoveDirectionPrevious = \"N\" || locMoveDirection = \"W\" && locMoveDirectionPrevious = \"E\" || locMoveDirection = \"E\" && locMoveDirectionPrevious = \"W\",\n        UpdateContext({locMoveDirection: locMoveDirectionPrevious})\n    );\n    // Calculate Head Move\n    Patch(\n        colBoard,\n        locHeadObject,\n        {Object: \"\"}\n    );\n    Switch(\n        locMoveDirection,\n        \"N\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y - 1}\n                )\n            }\n        ),\n        \"S\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y + 1}\n                )\n            }\n        ),\n        \"E\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        ),\n        \"W\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X - 1}\n                )\n            }\n        ),\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        )\n    );\n    // Tail Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && X = locHeadObject.X && Y = locHeadObject.Y\n            )\n        ),\n        UpdateContext(\n            {\n                locMenu: \"Gameover\",\n                locMenuItem: lblGOExit.Text,\n                locIsGameOver: true\n            }\n        )\n    );\n    // Boundry Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                X = locHeadObject.X && Y = locHeadObject.Y && Object = \"Boundry\"\n            )\n        ),\n        If(\n            locWrap,\n            UpdateContext(\n                {\n                    locHeadObject: Patch(\n                        locHeadObject,\n                        {\n                            X: If(\n                                locHeadObject.X < 0,\n                                locMaxX - 1,\n                                If(\n                                    locHeadObject.X >= locMaxX,\n                                    0,\n                                    locHeadObject.X\n                                )\n                            ),\n                            Y: If(\n                                locHeadObject.Y < 0,\n                                locMaxY - 1,\n                                If(\n                                    locHeadObject.Y >= locMaxY,\n                                    0,\n                                    locHeadObject.Y\n                                )\n                            )\n                        }\n                    )\n                }\n            ),\n            UpdateContext(\n                {\n                    locMenu: \"Gameover\",\n                    locMenuItem: lblGOExit.Text,\n                    locIsGameOver: true\n                }\n            )\n        )\n    );\n    // Make the Head Move\n    UpdateContext(\n        {\n            locHeadObject: Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    X = locHeadObject.X && Y = locHeadObject.Y\n                ),\n                {Object: \"Head\"}\n            )\n        }\n    );\n    Concurrent(\n        // Dot Collision Check\n        If(\n            locHeadObject.X = locDotObject.X && locHeadObject.Y = locDotObject.Y,\n            UpdateContext({locDotCollision: true});\n            UpdateContext({locDotCount: locDotCount + 1});\n        ),\n        // Special Collision Check\n        If(\n            locHeadObject.X = locSpecialObject.X && locHeadObject.Y = locSpecialObject.Y,\n            UpdateContext(\n                {\n                    locSpecialCollision: true,\n                    locSpecialSpawnTick: 0\n                }\n            );\n        )\n    );\n    // Scoring Actions\n    If(\n        locSpecialCollision || locDotCollision,\n        UpdateContext(\n            {\n                locScore: RoundDown(\n                    locScore + If(\n                        locSpecialCollision,\n                        50 * locMultiplier,\n                        10 * locMultiplier\n                    ),\n                    0\n                ),\n                locSpeed: Max(\n                    locMaxSpeed,\n                    locSpeed - (locSpeed * locSpeedDivisor)\n                )\n            }\n        );\n        If(\n            // Remove and Spawn new Dot\n            locDotCollision,\n            Patch(\n                LookUp(\n                    colBoard,\n                    Object = \"Dot\"\n                ),\n                {Object: \"\"}\n            );\n            With(\n                {\n                    randomFreeSpace: Last(\n                        FirstN(\n                            Filter(\n                                colBoard,\n                                Object = \"\"\n                            ),\n                            RandBetween(\n                                1,\n                                CountRows(\n                                    Filter(\n                                        colBoard,\n                                        Object = \"\"\n                                    )\n                                )\n                            )\n                        )\n                    )\n                },\n                UpdateContext(\n                    {\n                        locDotObject: Patch(\n                            colBoard,\n                            randomFreeSpace,\n                            {Object: \"Dot\"}\n                        )\n                    }\n                )\n            ),\n            // Remove Special\n            Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                ),\n                {Object: \"\"}\n            );\n            UpdateContext({locSpecialObject: Blank()});\n        );\n    );\n    // Move Tail, will create additional tail segment which will be removed if no collision.\n    // Get new tail pos\n    ClearCollect(\n        colTailUpdates,\n        AddColumns(\n            Filter(\n                colBoard,\n                Object = \"Tail\" && Value >= 0\n            ),\n            NewValue,\n            Value + 1\n        )\n    );\n    // Make Tails move\n    ForAll(\n        Sort(\n            colTailUpdates,\n            Value,\n            SortOrder.Descending\n        ) As Update,\n        Patch(\n            colBoard,\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && Value = Update.Value\n            ),\n            {Value: Update.NewValue}\n        )\n    );\n    // Move first Tail to Head\n    Patch(\n        colBoard,\n        LookUp(\n            colBoard,\n            X = locPrevHeadObject.X && Y = locPrevHeadObject.Y\n        ),\n        {\n            Object: \"Tail\",\n            Value: 0\n        }\n    );\n    If(\n        Not(locSpecialCollision || locDotCollision),\n        // No Collision; clear the additional tail segment\n        Patch(\n            colBoard,\n            First(\n                Sort(\n                    Filter(\n                        colBoard,\n                        Object = \"Tail\"\n                    ),\n                    Value,\n                    SortOrder.Descending\n                )\n            ),\n            {\n                Object: \"\",\n                Value: -1\n            }\n        );\n    );\n    // Reset Collision\n    UpdateContext(\n        {\n            locSpecialCollision: false,\n            locDotCollision: false\n        }\n    );\n    // Spawn Special\n    If(\n        locDotCount >= 5,\n        UpdateContext(\n            {\n                locSpecialSpawn: true,\n                locDotCount: 0\n            }\n        )\n    );\n    If(\n        locSpecialSpawn && Mod(\n            locGameTick,\n            25\n        ) = 0,\n        With(\n            {\n                randomFreeSpace: Last(\n                    FirstN(\n                        Filter(\n                            colBoard,\n                            Object = \"\"\n                        ),\n                        RandBetween(\n                            1,\n                            CountRows(\n                                Filter(\n                                    colBoard,\n                                    Object = \"\"\n                                )\n                            )\n                        )\n                    )\n                )\n            },\n            UpdateContext(\n                {\n                    locSpecialSpawn: false,\n                    locSpecialSpawnTick: locGameTick,\n                    locSpecialObject: Patch(\n                        colBoard,\n                        LookUp(\n                            colBoard,\n                            X = randomFreeSpace.X && Y = randomFreeSpace.Y\n                        ),\n                        {Object: \"Special\"}\n                    )\n                }\n            )\n        )\n    );\n    // Remove the special Object after 30 game ticks\n    If(\n        locGameTick = locSpecialSpawnTick + locSpecialDespawnTicks && locSpecialSpawnTick > 0,\n        With(\n            {\n                oldSpecialObject: LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                )\n            },\n            Patch(\n                colBoard,\n                oldSpecialObject,\n                {\n                    Object: \"\",\n                    Value: -1\n                }\n            )\n        );\n        UpdateContext({locSpecialSpawnTick: 0});\n    );\n    // Update variables\n    UpdateContext(\n        {\n            locGameTick: locGameTick + 1,\n            locMoveDirectionPrevious: locMoveDirection,\n            locPrevHeadObject: locHeadObject\n        }\n    ),\n    If(\n        locMenu = \"Gameover\",\n        If(\n            locScore > locHighScore,\n            UpdateContext({locHighScore: locScore});\n            UpdateContext(\n                {\n                    locSettings: Patch(\n                        colSettings,\n                        locSettings,\n                        {Highscore: locHighScore}\n                    )\n                }\n            );\n            IfError(\n                ClearData(),\n                \"\"\n            );\n            IfError(\n                SaveData(\n                    colSettings,\n                    \"Settings\"\n                ),\n                locSettings\n            )\n        )\n    );\n    \n);\n"
+      OnTimerEnd: "=If(\n    locMenu = \"Game\",\n    // Switch direction back if opposite\n    If(\n        locMoveDirection = \"N\" && locMoveDirectionPrevious = \"S\" || locMoveDirection = \"S\" && locMoveDirectionPrevious = \"N\" || locMoveDirection = \"W\" && locMoveDirectionPrevious = \"E\" || locMoveDirection = \"E\" && locMoveDirectionPrevious = \"W\",\n        UpdateContext({locMoveDirection: locMoveDirectionPrevious})\n    );\n    // Calculate Head Move\n    Patch(\n        colBoard,\n        locHeadObject,\n        {Object: \"\"}\n    );\n    Switch(\n        locMoveDirection,\n        \"N\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y - 1}\n                )\n            }\n        ),\n        \"S\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {Y: locHeadObject.Y + 1}\n                )\n            }\n        ),\n        \"E\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        ),\n        \"W\",\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X - 1}\n                )\n            }\n        ),\n        UpdateContext(\n            {\n                locHeadObject: Patch(\n                    locHeadObject,\n                    {X: locHeadObject.X + 1}\n                )\n            }\n        )\n    );\n    // Tail Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && X = locHeadObject.X && Y = locHeadObject.Y\n            )\n        ),\n        UpdateContext(\n            {\n                locMenu: \"Gameover\",\n                locMenuItem: lblGOExit.Text,\n                locIsGameOver: true\n            }\n        )\n    );\n    // Boundry Collision Check\n    If(\n        !IsBlank(\n            LookUp(\n                colBoard,\n                X = locHeadObject.X && Y = locHeadObject.Y && Object = \"Boundry\"\n            )\n        ),\n        If(\n            locWrap,\n            UpdateContext(\n                {\n                    locHeadObject: Patch(\n                        locHeadObject,\n                        {\n                            X: If(\n                                locHeadObject.X < 0,\n                                locMaxX - 1,\n                                If(\n                                    locHeadObject.X >= locMaxX,\n                                    0,\n                                    locHeadObject.X\n                                )\n                            ),\n                            Y: If(\n                                locHeadObject.Y < 0,\n                                locMaxY - 1,\n                                If(\n                                    locHeadObject.Y >= locMaxY,\n                                    0,\n                                    locHeadObject.Y\n                                )\n                            )\n                        }\n                    )\n                }\n            ),\n            UpdateContext(\n                {\n                    locMenu: \"Gameover\",\n                    locMenuItem: lblGOExit.Text,\n                    locIsGameOver: true\n                }\n            )\n        )\n    );\n    // Make the Head Move\n    UpdateContext(\n        {\n            locHeadObject: Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    X = locHeadObject.X && Y = locHeadObject.Y\n                ),\n                {Object: \"Head\"}\n            )\n        }\n    );\n    Concurrent(\n        // Dot Collision Check\n        If(\n            locHeadObject.X = locDotObject.X && locHeadObject.Y = locDotObject.Y,\n            UpdateContext({locDotCollision: true});\n            UpdateContext({locDotCount: locDotCount + 1});\n        ),\n        // Special Collision Check\n        If(\n            locHeadObject.X = locSpecialObject.X && locHeadObject.Y = locSpecialObject.Y,\n            UpdateContext(\n                {\n                    locSpecialCollision: true,\n                    locSpecialSpawnTick: 0\n                }\n            );\n        )\n    );\n    // Scoring Actions\n    If(\n        locSpecialCollision || locDotCollision,\n        UpdateContext(\n            {\n                locScore: RoundDown(\n                    locScore + If(\n                        locSpecialCollision,\n                        50 * locMultiplier,\n                        10 * locMultiplier\n                    ),\n                    0\n                ),\n                locSpeed: Max(\n                    locMaxSpeed,\n                    locSpeed - (locSpeed * locSpeedDivisor)\n                ),\n                locPlayAudio: true\n            }\n        );\n        If(\n            // Remove and Spawn new Dot\n            locDotCollision,\n            Patch(\n                LookUp(\n                    colBoard,\n                    Object = \"Dot\"\n                ),\n                {Object: \"\"}\n            );\n            With(\n                {\n                    randomFreeSpace: Last(\n                        FirstN(\n                            Filter(\n                                colBoard,\n                                Object = \"\"\n                            ),\n                            RandBetween(\n                                1,\n                                CountRows(\n                                    Filter(\n                                        colBoard,\n                                        Object = \"\"\n                                    )\n                                )\n                            )\n                        )\n                    )\n                },\n                UpdateContext(\n                    {\n                        locDotObject: Patch(\n                            colBoard,\n                            randomFreeSpace,\n                            {Object: \"Dot\"}\n                        )\n                    }\n                )\n            ),\n            // Remove Special\n            Patch(\n                colBoard,\n                LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                ),\n                {Object: \"\"}\n            );\n            UpdateContext({locSpecialObject: Blank()});\n        );\n    );\n    // Move Tail, will create additional tail segment which will be removed if no collision.\n    // Get new tail pos\n    ClearCollect(\n        colTailUpdates,\n        AddColumns(\n            Filter(\n                colBoard,\n                Object = \"Tail\" && Value >= 0\n            ),\n            NewValue,\n            Value + 1\n        )\n    );\n    // Make Tails move\n    ForAll(\n        Sort(\n            colTailUpdates,\n            Value,\n            SortOrder.Descending\n        ) As Update,\n        Patch(\n            colBoard,\n            LookUp(\n                colBoard,\n                Object = \"Tail\" && Value = Update.Value\n            ),\n            {Value: Update.NewValue}\n        )\n    );\n    // Move first Tail to Head\n    Patch(\n        colBoard,\n        LookUp(\n            colBoard,\n            X = locPrevHeadObject.X && Y = locPrevHeadObject.Y\n        ),\n        {\n            Object: \"Tail\",\n            Value: 0\n        }\n    );\n    If(\n        Not(locSpecialCollision || locDotCollision),\n        // No Collision; clear the additional tail segment\n        Patch(\n            colBoard,\n            First(\n                Sort(\n                    Filter(\n                        colBoard,\n                        Object = \"Tail\"\n                    ),\n                    Value,\n                    SortOrder.Descending\n                )\n            ),\n            {\n                Object: \"\",\n                Value: -1\n            }\n        );\n    );\n    // Reset Collision\n    UpdateContext(\n        {\n            locSpecialCollision: false,\n            locDotCollision: false\n        }\n    );\n    // Spawn Special\n    If(\n        locDotCount >= 5,\n        UpdateContext(\n            {\n                locSpecialSpawn: true,\n                locDotCount: 0\n            }\n        )\n    );\n    If(\n        locSpecialSpawn && Mod(\n            locGameTick,\n            25\n        ) = 0,\n        With(\n            {\n                randomFreeSpace: Last(\n                    FirstN(\n                        Filter(\n                            colBoard,\n                            Object = \"\"\n                        ),\n                        RandBetween(\n                            1,\n                            CountRows(\n                                Filter(\n                                    colBoard,\n                                    Object = \"\"\n                                )\n                            )\n                        )\n                    )\n                )\n            },\n            UpdateContext(\n                {\n                    locSpecialSpawn: false,\n                    locSpecialSpawnTick: locGameTick,\n                    locSpecialObject: Patch(\n                        colBoard,\n                        LookUp(\n                            colBoard,\n                            X = randomFreeSpace.X && Y = randomFreeSpace.Y\n                        ),\n                        {Object: \"Special\"}\n                    )\n                }\n            )\n        )\n    );\n    // Remove the special Object after 30 game ticks\n    If(\n        locGameTick = locSpecialSpawnTick + locSpecialDespawnTicks && locSpecialSpawnTick > 0,\n        With(\n            {\n                oldSpecialObject: LookUp(\n                    colBoard,\n                    Object = \"Special\"\n                )\n            },\n            Patch(\n                colBoard,\n                oldSpecialObject,\n                {\n                    Object: \"\",\n                    Value: -1\n                }\n            )\n        );\n        UpdateContext({locSpecialSpawnTick: 0});\n    );\n    // Update variables\n    UpdateContext(\n        {\n            locGameTick: locGameTick + 1,\n            locMoveDirectionPrevious: locMoveDirection,\n            locPrevHeadObject: locHeadObject\n        }\n    ),\n    If(\n        locMenu = \"Gameover\",\n        If(\n            locScore > locHighScore,\n            UpdateContext({locHighScore: locScore});\n            UpdateContext(\n                {\n                    locSettings: Patch(\n                        colSettings,\n                        locSettings,\n                        {Highscore: locHighScore}\n                    )\n                }\n            );\n            IfError(\n                ClearData(),\n                \"\"\n            );\n            IfError(\n                SaveData(\n                    colSettings,\n                    \"Settings\"\n                ),\n                locSettings\n            )\n        )\n    );\n    \n);"
       AutoPause: =false
       Duration: =locSpeed
       Repeat: =!locIsGameOver
@@ -752,7 +762,8 @@
                                 locStartGame: false
                             }
                         )
-                    )
+                    );
+                    UpdateContext({locPlayAudio:true});
                   BorderColor: =icoUp.BorderColor
                   BorderThickness: =1
                   Color: =icoUp.Color
@@ -821,6 +832,7 @@
         Properties:
           AlignInContainer: =AlignInContainer.SetByContainer
           DropShadow: =DropShadow.None
+          Fill: =conDPAD.Fill
           FillPortions: =0
           Height: =Parent.Height/15
           LayoutMode: =LayoutMode.Auto
@@ -835,9 +847,11 @@
               Text: |-
                 ="Direction: 
                 " & locMoveDirection
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =85
         - lblDebugGameTick:
             Control: Label
@@ -845,9 +859,11 @@
               Text: |-
                 ="Game Tick: 
                 " & locGameTick
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =95
         - lblDebugSpecialTick:
             Control: Label
@@ -855,9 +871,11 @@
               Text: |-
                 ="Special Tick: 
                 " & locSpecialSpawnTick
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =100
         - lblDebugDotIter:
             Control: Label
@@ -865,9 +883,11 @@
               Text: |-
                 ="Dot Count: 
                 " & locDotCount
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =95
         - lblDebugIsGameOver:
             Control: Label
@@ -875,9 +895,11 @@
               Text: |-
                 ="Game Over: 
                 " & locIsGameOver
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =100
         - lblDebugSpeed:
             Control: Label
@@ -885,9 +907,11 @@
               Text: |-
                 ="Speed: 
                 " & locSpeed
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =65
         - lblDebugSpecialSpawn:
             Control: Label
@@ -895,9 +919,11 @@
               Text: |-
                 ="Spawn Special: 
                 " & locSpecialSpawn
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =125
         - lblDebugHeadPOS:
             Control: Label
@@ -905,9 +931,11 @@
               Text: |-
                 ="Head Position: 
                 X:" & locHeadObject.X & ", Y:" & locHeadObject.Y
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =119
         - lblDebugDotPOS:
             Control: Label
@@ -915,9 +943,11 @@
               Text: |-
                 ="Dot Position: 
                 X:" & locDotObject.X & ", Y:" & locDotObject.Y
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =120
         - lblDebugSpecialPOS:
             Control: Label
@@ -925,9 +955,11 @@
               Text: |-
                 ="Special Position: 
                 X:" & locSpecialObject.X & ", Y:" & locSpecialObject.Y
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =140
         - lblDebugTailLength:
             Control: Label
@@ -935,9 +967,11 @@
               Text: |-
                 ="Tail Length: 
                 " & CountRows(Filter(colBoard,Object="Tail"))
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: |+
                 =110
         - lblDebugWrap:
@@ -946,9 +980,11 @@
               Text: |-
                 ="Wrap: 
                 " & locWrap
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =60
         - lblDebugHardMode:
             Control: Label
@@ -956,9 +992,11 @@
               Text: |-
                 ="Hard Mode: 
                 " & locHard
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =100
         - lblDebugScoreMulti:
             Control: Label
@@ -966,18 +1004,22 @@
               Text: |-
                 ="Score Multiplier: 
                 " & locMultiplier
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
         - lblDebugSpeedDivisor:
             Control: Label
             Properties:
               Text: |-
                 ="Speed Divisor: 
                 " & locSpeedDivisor
+              Color: =ColorValue(locBGColour)
               Font: =Font.'Open Sans'
               Height: =50
               Size: =12
+              VerticalAlign: =VerticalAlign.Top
               Width: =130
 - shpOutline:
     Control: Rectangle
