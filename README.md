@@ -12,7 +12,7 @@ Features:
 - Dynamic grid size (adjustable in the screens onVisible property)
 
 <details>
-<summary>View Video</summary>
+<summary>View Demo Video</summary>
     
 https://github.com/user-attachments/assets/c3be4004-e720-435c-8ad6-9f6b8cdfa6fb
 </details>
