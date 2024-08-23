@@ -4,7 +4,7 @@
 <br>
 
 ## Description
-Classic snake game inspired by the old Nokia games, made in Powerapps. 🐍
+Classic snake game inspired by the old Nokia games, made in Power Apps. 🐍
 <details>
 <summary>View Demo Video</summary>
 </details>
